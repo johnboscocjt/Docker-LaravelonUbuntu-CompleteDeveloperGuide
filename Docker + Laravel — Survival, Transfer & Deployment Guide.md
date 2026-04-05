@@ -2,23 +2,668 @@
 
 > **Author:** [@johnboscocjt](https://github.com/johnboscocjt)
 > **Who this is for:** Developers on limited data · Developers sharing projects between PCs · Anyone deploying Laravel with Docker
-> **Covers:** Incomplete builds · Why Docker re-downloads things · Offline transfer · Running on another PC · Hot containers · Production deployment
+> **Covers:** Docker Contexts · Incomplete builds · Why Docker re-downloads things · Offline transfer · Running on another PC · Hot containers · Production deployment
 
 ---
 
 ## 📑 Table of Contents
 
-1. [🐧 Why Docker Downloads Its Own Ubuntu (Even If You Have Ubuntu)](#-why-docker-downloads-its-own-ubuntu-even-if-you-have-ubuntu)
-2. [⚠️ Your Build Stopped Mid-Way — What to Do Without Wasting MBs](#️-your-build-stopped-mid-way--what-to-do-without-wasting-mbs)
-3. [✂️ Stripping Down Your Project to Save Data](#️-stripping-down-your-project-to-save-data)
-4. [🔌 Port Conflict — `bind: address already in use`](#-port-conflict--bind-address-already-in-use)
-5. [🚀 Docker Desktop Doesn't Start Automatically](#-docker-desktop-doesnt-start-automatically)
-6. [💾 Running Your Laravel Project on Another PC](#-running-your-laravel-project-on-another-pc)
-7. [📦 Saving & Transferring Images via Flash Drive (Zero Internet)](#-saving--transferring-images-via-flash-drive-zero-internet)
-8. [🔥 Hot Containers — Sharing a Live Laravel App on Your Local Network](#-hot-containers--sharing-a-live-laravel-app-on-your-local-network)
-9. [🌍 Deploying Laravel + Docker to a Real Server (Production)](#-deploying-laravel--docker-to-a-real-server-production)
-10. [🧰 Pre-Flight Checklist Before Every `sail up`](#-pre-flight-checklist-before-every-sail-up)
-11. [🗺️ Quick Reference — All Commands in One Place](#️-quick-reference--all-commands-in-one-place)
+1. [🎯 Docker Contexts — The Simple Truth (Read This First)](#-docker-contexts--the-simple-truth-read-this-first)
+2. [🐧 Why Docker Downloads Its Own Ubuntu (Even If You Have Ubuntu)](#-why-docker-downloads-its-own-ubuntu-even-if-you-have-ubuntu)
+3. [⚠️ Your Build Stopped Mid-Way — What to Do Without Wasting MBs](#️-your-build-stopped-mid-way--what-to-do-without-wasting-mbs)
+4. [✂️ Stripping Down Your Project to Save Data](#️-stripping-down-your-project-to-save-data)
+5. [🔌 Port Conflict — `bind: address already in use`](#-port-conflict--bind-address-already-in-use)
+6. [🚀 Docker Desktop Doesn't Start Automatically](#-docker-desktop-doesnt-start-automatically)
+7. [💾 Running Your Laravel Project on Another PC](#-running-your-laravel-project-on-another-pc)
+8. [📦 Saving & Transferring Images via Flash Drive (Zero Internet)](#-saving--transferring-images-via-flash-drive-zero-internet)
+9. [🔥 Hot Containers — Sharing a Live Laravel App on Your Local Network](#-hot-containers--sharing-a-live-laravel-app-on-your-local-network)
+10. [🌍 Deploying Laravel + Docker to a Real Server (Production)](#-deploying-laravel--docker-to-a-real-server-production)
+11. [🧰 Pre-Flight Checklist Before Every `sail up`](#-pre-flight-checklist-before-every-sail-up)
+12. [🗺️ Quick Reference — All Commands in One Place](#️-quick-reference--all-commands-in-one-place)
+
+---
+
+## 🎯 Docker Contexts — The Simple Truth (Read This First)
+
+> You have already run `docker context use default`. This section explains exactly what that means, why it matters, and the one simple rule you need to follow so you never get confused again.
+
+---
+
+### What Is a Docker Context?
+
+Think of a **context** as a remote control that points at a specific Docker engine. When you run any Docker or Sail command, it gets sent to whichever engine your context is currently pointing at.
+
+You have **two Docker engines** installed on your machine:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    YOUR UBUNTU PC                       │
+│                                                         │
+│  Engine 1: Docker Engine (the "default" context)        │
+│  ─────────────────────────────────────────────          │
+│  • Runs as a background system service                  │
+│  • Starts automatically on boot                         │
+│  • Controlled via terminal only                         │
+│  • socket: /var/run/docker.sock                         │
+│                                                         │
+│  Engine 2: Docker Desktop (the "desktop-linux" context) │
+│  ─────────────────────────────────────────────          │
+│  • Runs inside its own small virtual machine            │
+│  • Only works when Docker Desktop app is open           │
+│  • Has its own GUI dashboard                            │
+│  • Has its own separate storage for images/containers   │
+└─────────────────────────────────────────────────────────┘
+```
+
+**The most important thing to understand:**
+
+> These two engines are completely separate from each other. Images you download in one engine do NOT appear in the other. Containers you start in one engine do NOT appear in the other. They each have their own storage.
+
+---
+
+### The One Rule You Need
+
+**Whatever context you pick — stick with it for everything.**
+
+Pick one, use it for all your projects, and never switch mid-project.
+
+```
+You already ran:  docker context use default
+That means:       You are using Docker Engine (the system service)
+Stick with:       Always use "default" from now on
+Never switch to:  desktop-linux mid-project
+```
+
+---
+
+### What "default" Context Means for You Right Now
+
+Since you ran `docker context use default`, here is exactly what your setup looks like:
+
+```
+docker context use default   ← you already did this ✅
+
+Every command you run now goes to:   Docker Engine (the system service)
+Your containers live in:             Docker Engine's storage
+Your images live in:                 Docker Engine's storage
+Docker Desktop GUI shows:            NOTHING (different engine, different storage)
+```
+
+**This is completely fine.** Most developers who work mostly in the terminal use `default`. You do not need Docker Desktop at all.
+
+---
+
+### Will Docker Desktop Show My Containers?
+
+No — and that is expected, not a bug.
+
+Since you are using the `default` context, your containers and images live inside Docker Engine's storage. Docker Desktop looks at its own separate engine (`desktop-linux`). It will show an empty container list even though your Laravel project is running perfectly.
+
+```
+Your terminal (default context):          Docker Desktop GUI:
+─────────────────────────────────         ──────────────────────────
+docker ps                                 Containers tab
+→ laravel.test   ✅ running               → (empty — different engine)
+→ mysql          ✅ running               → nothing here
+→ redis          ✅ running               → nothing here
+```
+
+**Your app is working. Docker Desktop just cannot see it.** This is normal.
+
+If you want Docker Desktop to show your containers, you would need to switch context to `desktop-linux` — but then you would need Docker Desktop running at all times. Since you are on `default`, you do not.
+
+---
+
+### Checking Which Context You Are On Right Now
+
+```bash
+docker context ls
+```
+
+Example output:
+
+```
+NAME              DESCRIPTION                               DOCKER ENDPOINT
+default *         Current DOCKER_HOST based configuration   unix:///var/run/docker.sock
+desktop-linux     Docker Desktop                            ...
+```
+
+The `*` next to `default` means you are on Docker Engine. That is where your containers and images live.
+
+---
+
+### The Only Time You Should Change Context
+
+Do not change context unless you have a very specific reason. Here are the only valid reasons:
+
+| Situation | What to Do |
+|-----------|-----------|
+| You want to use the Docker Desktop GUI to see containers | `docker context use desktop-linux` — but then always use Desktop for everything |
+| You accidentally switched context mid-project | Switch back to `default` immediately: `docker context use default` |
+| You are setting up a completely fresh machine and choosing one to use | Pick `default` if you prefer terminal. Pick `desktop-linux` if you prefer GUI. Then never switch |
+| You are deploying to a remote server | Use `default` — servers never have Docker Desktop |
+
+---
+
+### The Golden Rule — One Context, Always
+
+```bash
+# ✅ CORRECT — pick one and stay on it
+docker context use default        # Terminal-first developer
+# or
+docker context use desktop-linux  # GUI-first developer
+
+# ❌ WRONG — switching back and forth causes confusion
+docker context use desktop-linux
+./vendor/bin/sail up -d
+docker context use default        # Now sail can't see the containers it just started!
+docker ps                         # Shows nothing — they're in the other engine
+```
+
+---
+
+### Summary: Your Situation Right Now
+
+You ran `docker context use default`. Here is your complete picture:
+
+```
+✅ Context:          default  (Docker Engine — system service)
+✅ Auto-starts:      Yes — Docker Engine starts on boot automatically
+✅ GUI needed:       No — terminal only, Docker Desktop not required
+✅ Your containers:  Live in Docker Engine storage
+✅ Your images:      Live in Docker Engine storage
+✅ sail up works:    Yes — as long as Docker Engine is running
+⚠️  Docker Desktop:  Cannot see your containers (that is normal and fine)
+```
+
+**You do not need to change anything.** Just always make sure `docker context ls` shows `default *` before running `sail up`, and you are good.
+
+---
+
+### 🖥️ The `desktop-linux` Context — What It Is and How It Differs
+
+Even though you are on `default`, it is important to understand what `desktop-linux` is so you are never caught off guard when you see it mentioned or when Docker Desktop is involved.
+
+#### What `desktop-linux` Actually Is
+
+When you install Docker Desktop on Linux, it creates its own small virtual machine (VM) running silently in the background. Inside that VM lives a completely separate Docker engine — separate from the one Docker Engine installed on your system.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        YOUR UBUNTU PC                            │
+│                                                                  │
+│  ┌─────────────────────────────────┐                            │
+│  │   Docker Engine (system)        │  ← "default" context       │
+│  │   /var/run/docker.sock          │                            │
+│  │   Starts on boot automatically  │                            │
+│  │   No GUI — terminal only        │                            │
+│  └─────────────────────────────────┘                            │
+│                                                                  │
+│  ┌─────────────────────────────────┐                            │
+│  │   Docker Desktop VM             │  ← "desktop-linux" context │
+│  │   Its own separate engine       │                            │
+│  │   Only runs when Desktop is open│                            │
+│  │   Has the GUI dashboard         │                            │
+│  │   Has its own images + storage  │                            │
+│  └─────────────────────────────────┘                            │
+│                                                                  │
+│  These two engines NEVER share images, containers, or volumes.  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### How `desktop-linux` Behaves Day-to-Day
+
+| Behaviour | `desktop-linux` |
+|-----------|----------------|
+| Starts automatically on boot | ❌ No — you must open Docker Desktop first |
+| Needs an app to be open | ✅ Yes — Docker Desktop must be running |
+| Has a visual GUI dashboard | ✅ Yes — containers, logs, stats, images all visible |
+| Works from the terminal | ✅ Yes — but only when Desktop is open |
+| Shares images with `default` | ❌ No — completely separate storage |
+| Good for limited data users | ⚠️ Adds ~1 GB just for installation |
+
+#### When `desktop-linux` Makes Sense
+
+Use `desktop-linux` if you prefer clicking buttons over typing commands. The Docker Desktop GUI gives you:
+
+- Live container logs in a browser-like interface
+- One-click start/stop/restart for any container
+- A visual breakdown of disk and memory usage
+- A built-in terminal inside any container (no `docker exec` needed)
+- Image management with sizes shown clearly
+
+But if you are comfortable in the terminal, `default` gives you everything faster with no overhead.
+
+---
+
+### 📊 Full Comparison: `default` vs `desktop-linux` vs Using Both
+
+This table covers every angle so you can confidently know what each context does, what it costs, and when to use it.
+
+| | `default` (Docker Engine) | `desktop-linux` (Docker Desktop) |
+|--|--------------------------|----------------------------------|
+| **What it is** | The core Docker daemon running as a Linux system service | A separate Docker engine running inside Docker Desktop's own VM |
+| **How to activate** | `docker context use default` | `docker context use desktop-linux` |
+| **Starts on boot** | ✅ Yes — automatic, always ready | ❌ No — you must open Docker Desktop first |
+| **Requires an app open** | ❌ No — runs silently in background | ✅ Yes — Docker Desktop must be running |
+| **Has a GUI** | ❌ No — terminal only | ✅ Yes — full visual dashboard |
+| **Terminal commands work** | ✅ Yes — all docker/sail commands | ✅ Yes — but only while Desktop is open |
+| **Image storage location** | `/var/lib/docker/` (host filesystem) | Inside Docker Desktop's VM disk image |
+| **Shares images with the other** | ❌ No | ❌ No |
+| **Shares containers with the other** | ❌ No | ❌ No |
+| **Installation size** | ~100–150 MB | ~850 MB–1.1 GB |
+| **Good for limited data** | ✅ Yes | ⚠️ Higher cost to install |
+| **Auto-start on boot** | `sudo systemctl enable docker` (already done by default) | `systemctl --user enable docker-desktop` |
+| **Best for** | Terminal-first developers, servers, CI/CD | Visual learners, beginners, teams using GUI |
+| **Sail works with it** | ✅ Yes | ✅ Yes — when Desktop is open |
+| **`docker ps` shows containers** | Only containers started under `default` | Only containers started under `desktop-linux` |
+
+---
+
+### 🔴 The Biggest Trap: Starting in One Context, Checking in Another
+
+This is the most common source of confusion. Here is a real example of what goes wrong:
+
+```bash
+# You start your project on desktop-linux
+docker context use desktop-linux
+./vendor/bin/sail up -d
+# ✅ Laravel is running
+
+# Later, you switch context (maybe by mistake or following a guide)
+docker context use default
+
+# Now you check if containers are running
+docker ps
+# ❌ Shows nothing — they are in desktop-linux's engine, not default's
+
+# You panic and try to start again
+./vendor/bin/sail up -d
+# Docker pulls images again from scratch — because default's storage is empty!
+# ❌ Wastes hundreds of MB re-downloading what you already have
+```
+
+**The fix is always the same:** check your context, switch back to where you started, and your containers will reappear:
+
+```bash
+docker context ls                    # see which is active
+docker context use desktop-linux     # switch back to where containers live
+docker ps                            # ✅ containers appear again — nothing was lost
+```
+
+---
+
+### 🟢 Choosing the Right Context for Your Setup — Decision Guide
+
+Answer these questions to know which context is right for you:
+
+```
+Do you have Docker Desktop installed?
+│
+├── No  →  Use "default". Only option available. Done.
+│
+└── Yes →  Do you want the visual GUI?
+           │
+           ├── No, I prefer terminal
+           │   └──  Use "default"
+           │        • Lighter, auto-starts on boot
+           │        • Docker Desktop not needed at all
+           │        • sudo systemctl enable docker  (already done)
+           │
+           └── Yes, I want the GUI dashboard
+               └──  Use "desktop-linux"
+                    • Open Docker Desktop before sail up
+                    • systemctl --user enable docker-desktop  (to auto-start)
+                    • All containers/images visible in the GUI
+```
+
+**You already chose `default`. That is the right choice for a terminal developer on limited data.**
+
+---
+
+### What Each Context Looks Like in Practice
+
+#### `default` Context — Day-to-Day
+
+```bash
+# Boot your PC → Docker Engine is already running (auto-start)
+# Open terminal → start working immediately
+
+docker context ls
+# NAME        DESCRIPTION              DOCKER ENDPOINT
+# default *   DOCKER_HOST based config unix:///var/run/docker.sock
+# desktop-linux  Docker Desktop        ...
+
+cd my-app
+./vendor/bin/sail up -d         # works immediately, no app to open
+sail artisan migrate            # runs inside container
+# open http://localhost         # ✅ app is live
+
+sail down                       # stop for the day
+# Docker Engine keeps running in background, 0 resources used when idle
+```
+
+#### `desktop-linux` Context — Day-to-Day
+
+```bash
+# Boot your PC → open Docker Desktop app from app menu
+# Wait 30–60 seconds for whale 🐳 icon to appear in system tray
+
+docker context use desktop-linux
+
+cd my-app
+./vendor/bin/sail up -d         # works once Desktop is open
+# ✅ containers appear in Docker Desktop GUI
+# click a container → see logs, stats, open terminal inside it
+
+sail down                       # stop for the day
+# close Docker Desktop app or leave it open
+```
+
+---
+
+### The One Thing Both Contexts Share
+
+Both contexts use the same `docker` and `sail` CLI commands — the syntax never changes. The only difference is **where** those commands are sent (which engine processes them).
+
+```bash
+# These commands work identically in BOTH contexts
+# Only the destination engine changes based on your active context
+
+docker ps
+docker images
+docker logs container-name
+./vendor/bin/sail up -d
+sail artisan migrate
+sail down
+```
+
+This means you can learn everything once and it applies to both contexts — you just need to stay consistent about which one you are using.
+
+---
+
+### Final Word on Contexts
+
+```
+Your context right now:  default ✅
+What that means:         You are using Docker Engine
+What to do:              Nothing — it is already correct
+One command to confirm:  docker context ls   (look for the * next to default)
+Rule to follow:          Never switch context unless you have a clear reason
+```
+
+If `docker context ls` ever shows the `*` on a context you did not intend, just run `docker context use default` to get back to your setup.
+
+---
+
+### 🔄 How to Switch Context Safely — Without Losing Anything
+
+> You said you want to switch to `desktop-linux` so you can use the Docker Desktop GUI. This section is the exact step-by-step process to do it cleanly, without breaking anything, losing any data, or wasting MBs.
+
+The most important thing to understand before switching:
+
+> **Switching context does NOT delete your containers, images, or data.** Everything you have in `default` stays exactly where it is. You are just moving your remote control to point at a different engine. The old engine and everything in it is still sitting there, untouched, waiting.
+
+---
+
+#### Before You Switch — Understand What Will Happen
+
+```
+BEFORE switch:                        AFTER switch to desktop-linux:
+──────────────────────────────────    ──────────────────────────────────
+default engine:                       default engine:
+  └─ laravel images      ✅ exist       └─ laravel images      ✅ still exist
+  └─ mysql images        ✅ exist       └─ mysql images        ✅ still exist
+  └─ your containers     ✅ running     └─ your containers     ⏸ still there
+                                                                 (but not visible
+                                                                  from new context)
+
+desktop-linux engine:                 desktop-linux engine:
+  └─ (empty)                            └─ (still empty — nothing transferred)
+                                        └─ Docker Desktop GUI shows nothing yet
+                                        └─ sail up here = fresh download needed ⚠️
+```
+
+This means: **switching context alone does NOT move your images to the other engine.** If you switch to `desktop-linux` and run `sail up`, Docker Desktop's engine has no images cached — it will download everything again.
+
+**To avoid this, you must transfer your images first.** The steps below walk you through this exactly.
+
+---
+
+#### The Safe Switch — Step by Step
+
+##### Step 1 — Stop everything cleanly in your current context
+
+Never switch context while containers are running. Stop them first:
+
+```bash
+# Make sure you are on default (your current context)
+docker context use default
+
+# Go to your project and stop containers cleanly
+cd ~/daily-task-tracker-laravel
+./vendor/bin/sail down
+
+# Confirm nothing is running
+docker ps
+# Should show: empty list (no containers)
+```
+
+##### Step 2 — Find and note your image names
+
+```bash
+docker images
+```
+
+```
+REPOSITORY                    TAG       IMAGE ID       SIZE
+laravelsail/php84-composer    latest    a1b2c3d4     2.01GB
+mysql                         8.0       b2c3d4e5      587MB
+redis                         alpine    c3d4e5f6       41MB
+mailpit/mailpit               latest    d4e5f6a7       52MB
+```
+
+Write these down or keep this terminal open — you will need the names in Step 5.
+
+##### Step 3 — Export your images to tar files
+
+This saves your images from Docker Engine's storage into portable files:
+
+```bash
+# Create a folder to hold the exported images
+mkdir ~/docker-transfer
+
+# Export all your project images into one file
+docker save -o ~/docker-transfer/laravel-images.tar \
+  laravelsail/php84-composer:latest \
+  mysql:8.0 \
+  redis:alpine \
+  mailpit/mailpit:latest
+
+# Check the file was created
+ls -lh ~/docker-transfer/
+# Expect: laravel-images.tar   ~2.8–3.2 GB
+```
+
+> ☕ This takes a few minutes — it is packaging ~3 GB of images into a single file. No internet used.
+
+##### Step 4 — Start Docker Desktop
+
+```bash
+systemctl --user start docker-desktop
+# Wait until the 🐳 whale icon appears in your system tray (30–60 seconds)
+```
+
+Or open it from your application menu — search **"Docker Desktop"** and click it.
+
+##### Step 5 — Switch context to `desktop-linux`
+
+```bash
+docker context use desktop-linux
+
+# Confirm the switch
+docker context ls
+# NAME              DESCRIPTION       DOCKER ENDPOINT
+# default           ...               unix:///var/run/docker.sock
+# desktop-linux *   Docker Desktop    ...    ← * is now here ✅
+```
+
+##### Step 6 — Load your images into Docker Desktop's engine
+
+```bash
+# Import the tar file into the desktop-linux engine
+docker load -i ~/docker-transfer/laravel-images.tar
+```
+
+You will see each image being loaded:
+
+```
+Loaded image: laravelsail/php84-composer:latest
+Loaded image: mysql:8.0
+Loaded image: redis:alpine
+Loaded image: mailpit/mailpit:latest
+```
+
+##### Step 7 — Verify images are in Docker Desktop
+
+```bash
+docker images
+# Should show all your images — same ones as before
+```
+
+Also check Docker Desktop GUI — click the **Images** tab and you should see them listed there.
+
+##### Step 8 — Start your project in the new context
+
+```bash
+cd ~/daily-task-tracker-laravel
+./vendor/bin/sail up -d
+
+# 0 MB downloaded — images are already loaded
+# ✅ Containers appear in Docker Desktop GUI
+```
+
+Open your browser: `http://localhost` — your app runs exactly as before.
+
+---
+
+#### After the Switch — Your New Daily Workflow
+
+From now on, every time you use your project:
+
+```bash
+# 1. Open Docker Desktop first (or enable auto-start — see below)
+systemctl --user start docker-desktop
+
+# 2. Make sure context is correct
+docker context use desktop-linux
+
+# 3. Start your project
+cd ~/daily-task-tracker-laravel
+./vendor/bin/sail up -d
+
+# 4. Work normally — open http://localhost
+# 5. Stop when done
+sail down
+```
+
+**To avoid step 1 every time, enable Docker Desktop auto-start:**
+
+```bash
+systemctl --user enable docker-desktop
+# From now on Docker Desktop starts when you log in — no manual step needed
+```
+
+---
+
+#### Clean Up After Switching (Optional — Frees Disk Space)
+
+Once you have confirmed everything works under `desktop-linux`, the images still sitting in Docker Engine's storage (`default`) are now duplicates. You can free that disk space:
+
+```bash
+# Switch temporarily to default to clean it up
+docker context use default
+
+# Check what's there
+docker images
+
+# Remove the images you no longer need in this engine
+docker image prune -a
+# or remove specific ones:
+docker rmi laravelsail/php84-composer:latest mysql:8.0 redis:alpine
+
+# Switch back to desktop-linux (your new home)
+docker context use desktop-linux
+
+# Confirm you are back
+docker context ls
+# desktop-linux *   ← correct
+```
+
+> ⚠️ Only clean up `default` after you have confirmed 100% that everything works in `desktop-linux`. Once deleted from `default`, recovering those images means either re-downloading or loading from your tar file again.
+
+---
+
+#### What If You Want to Switch Back to `default` Later?
+
+The process is exactly the same in reverse:
+
+```bash
+# Step 1 — Stop containers in desktop-linux
+docker context use desktop-linux
+sail down
+
+# Step 2 — Export images from desktop-linux
+docker save -o ~/docker-transfer/laravel-images-v2.tar \
+  laravelsail/php84-composer:latest \
+  mysql:8.0 \
+  redis:alpine
+
+# Step 3 — Switch context
+docker context use default
+
+# Step 4 — Load images into Docker Engine
+docker load -i ~/docker-transfer/laravel-images-v2.tar
+
+# Step 5 — Start your project
+sail up -d
+# 0 MB downloaded ✅
+```
+
+---
+
+#### When Is It OK to Switch Without Transferring Images?
+
+You only need to transfer images if you want to avoid re-downloading them. There are two situations where skipping the transfer is acceptable:
+
+| Situation | Transfer needed? | Why |
+|-----------|-----------------|-----|
+| You have a good internet connection and don't mind re-downloading | ❌ No | Just switch context and let Docker re-pull — it takes time but costs data |
+| The other engine already has the images cached from a previous project | ❌ No | Docker reuses them — 0 MB downloaded |
+| You are on limited data and images are not cached in the target engine | ✅ Yes | Without transfer, full re-download (~2.5–3 GB) |
+| You are switching permanently and want to free disk space after | ✅ Yes | Transfer first, verify, then clean up the old engine |
+
+---
+
+#### Summary: Safe Switch Checklist
+
+```
+SWITCHING FROM default → desktop-linux:
+
+□ 1. sail down                              (stop containers cleanly)
+□ 2. docker images                          (note your image names)
+□ 3. docker save -o ~/transfer.tar [images] (export images — no internet)
+□ 4. Open Docker Desktop                    (start the Desktop app)
+□ 5. docker context use desktop-linux       (switch context)
+□ 6. docker load -i ~/transfer.tar          (import images — no internet)
+□ 7. docker images                          (verify they loaded)
+□ 8. sail up -d                             (start project — 0 MB downloaded)
+□ 9. Test http://localhost                  (confirm app works)
+□ 10. (Optional) Clean up default engine    (free duplicate disk space)
+□ 11. systemctl --user enable docker-desktop (auto-start for next login)
+```
+
+---
 
 ---
 
