@@ -1,4 +1,4 @@
-# 🚑 Docker + Laravel — Survival, Transfer & Deployment Guide
+# 🚑 Docker + Laravel — Survival, Transfer & Deployment Guide 2026
 
 > **Author:** [@johnboscocjt](https://github.com/johnboscocjt)
 > **Who this is for:** Developers on limited data · Developers sharing projects between PCs · Anyone deploying Laravel with Docker
